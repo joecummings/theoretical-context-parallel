@@ -5,6 +5,7 @@ from statistics import mean
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+from matplotlib.ticker import MaxNLocator, ScalarFormatter
 
 sns.set_theme(style="whitegrid", palette="muted", font_scale=1.05)
 
@@ -117,6 +118,14 @@ def plot_cost_histograms(
         ax.set_title(f"CP={cp}, DP/CP={dp // cp}\nimbalance={imbalances[idx]:.3f}")
         ax.set_xlabel(cost_label)
         ax.set_ylabel("Count")
+        # Keep narrow time ranges legible: show a shared scientific multiplier
+        # instead of repeating several leading zeroes in every tick label.
+        formatter = ScalarFormatter(useMathText=True)
+        formatter.set_powerlimits((-3, 3))
+        formatter.set_useOffset(False)
+        ax.xaxis.set_major_formatter(formatter)
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+        ax.tick_params(axis="x", labelsize=9)
         ax.legend()
 
     for idx in range(n_plots, len(axes)):
