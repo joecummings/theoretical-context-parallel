@@ -1,9 +1,10 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
+
 from src.cost_model import H100, QWEN235, STRATEGIES, AttentionConfig, HardwareConfig
 from src.utils import DistributionType, make_sample_fn, read_batches
-from src.visual import plot_cost_model_summary, plot_strategy_comparison
 
 
 @dataclass
@@ -19,6 +20,8 @@ class CostModelConfig:
     )
     hw: HardwareConfig = field(default_factory=lambda: H100)
     attention: AttentionConfig = field(default_factory=lambda: QWEN235)
+    tile_aware: bool = True
+    seed: int | None = 0
 
 
 @dataclass
@@ -46,6 +49,7 @@ class CostModelRunner:
                 raise ValueError(
                     f"DP ({self.config.dp}) must be divisible by CP ({cp})"
                 )
+            self.config.attention.local_heads(cp)
         for s in self.config.strategies:
             if s not in STRATEGIES:
                 raise ValueError(
@@ -58,13 +62,23 @@ class CostModelRunner:
         distribution: DistributionType,
         strategy_name: str,
         verbose: bool = True,
+        batches: list[list[int]] | None = None,
     ) -> ExperimentResult:
         """Run comparison for a single configuration."""
-        sample_fn = make_sample_fn(distribution, self.config.seq_len)
-        batches = read_batches(sample_fn, self.config.seq_len * cp, self.config.dp)
+        if batches is None:
+            rng = np.random.default_rng(self.config.seed)
+            sample_fn = make_sample_fn(distribution, self.config.seq_len, rng)
+            batches = read_batches(
+                sample_fn, self.config.seq_len * cp, self.config.dp // cp
+            )
 
         strategy_cls = STRATEGIES[strategy_name]
-        strategy = strategy_cls(cp, self.config.hw, self.config.attention)
+        strategy = strategy_cls(
+            cp,
+            self.config.hw,
+            self.config.attention,
+            tile_aware=self.config.tile_aware,
+        )
 
         total_times = [strategy.total_time(batch) for batch in batches]
         max_time = max(total_times)
@@ -81,6 +95,14 @@ class CostModelRunner:
             if verbose:
                 print(f"CP={cp}")
             for dist in self.config.distributions:
+                dist_seed = None
+                if self.config.seed is not None:
+                    dist_seed = self.config.seed + self.config.distributions.index(dist)
+                rng = np.random.default_rng(dist_seed)
+                sample_fn = make_sample_fn(dist, self.config.seq_len, rng)
+                batches = read_batches(
+                    sample_fn, self.config.seq_len * cp, self.config.dp // cp
+                )
                 for strategy_name in self.config.strategies:
                     results.append(
                         self.run_single(
@@ -88,6 +110,7 @@ class CostModelRunner:
                             distribution=dist,
                             strategy_name=strategy_name,
                             verbose=verbose,
+                            batches=batches,
                         )
                     )
 
@@ -97,6 +120,8 @@ class CostModelRunner:
         self, output_dir: Path | str, verbose: bool = True
     ) -> list[ExperimentResult]:
         """Run experiments and generate plots."""
+        from src.visual import plot_cost_model_summary, plot_strategy_comparison
+
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 

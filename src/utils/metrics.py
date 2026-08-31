@@ -17,7 +17,7 @@ class ImbalanceMetrics:
     """Mean variance across steps"""
 
     def __repr__(self) -> str:
-        return f"ImbalanceMetrics(imbalance={self.imbalance:.4f}, cv={self.cv:.4f}, var={self.variance:.2f})"
+        return f"ImbalanceMetrics(imbalance={self.imbalance:.4f}, cv={self.cv:.4f}, var={self.variance:.2e})"
 
 
 def compute_imbalance_metrics(costs: np.ndarray) -> ImbalanceMetrics:
@@ -31,7 +31,7 @@ def compute_imbalance_metrics(costs: np.ndarray) -> ImbalanceMetrics:
     rank_mean = costs.mean(axis=1)
 
     imbalance = float(((rank_max - rank_min) / rank_mean).mean())
-    cv = float(costs.std() / costs.mean())
-    variance = float(costs.std(axis=1).mean() ** 2)
+    cv = float((costs.std(axis=1) / rank_mean).mean())
+    variance = float(costs.var(axis=1).mean())
 
     return ImbalanceMetrics(imbalance=imbalance, cv=cv, variance=variance)

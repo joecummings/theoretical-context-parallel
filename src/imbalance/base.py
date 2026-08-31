@@ -17,6 +17,16 @@ class SimulationConfig:
     cp: int
     n_steps: int = 100
     num_heads: int = 64
+    num_kv_heads: int = 8
+    head_dim: int = 128
+    causal: bool = True
+    tile_aware: bool = True
+    flash_block_q: int = 128
+    flash_block_kv: int = 128
+    compute_flops: float = 680e12
+    memory_bandwidth: float = 2.4e12
+    flash_fixed_overhead: float = 95e-6
+    dtype_bytes: int = 2
 
     def __post_init__(self):
         if self.dp % self.cp != 0:
@@ -24,6 +34,14 @@ class SimulationConfig:
         if self.num_heads % self.cp != 0:
             raise ValueError(
                 f"Num heads must be divisible by CP: {self.num_heads} % {self.cp} != 0"
+            )
+        if self.cp <= self.num_kv_heads and self.num_kv_heads % self.cp != 0:
+            raise ValueError(
+                f"CP ({self.cp}) must divide KV heads ({self.num_kv_heads})"
+            )
+        if self.cp > self.num_kv_heads and self.cp % self.num_kv_heads != 0:
+            raise ValueError(
+                "CP above the KV-head count must replicate KV heads evenly"
             )
 
     @property
@@ -37,6 +55,10 @@ class SimulationConfig:
     @property
     def local_nheads(self) -> int:
         return self.num_heads // self.cp
+
+    @property
+    def local_kv_nheads(self) -> int:
+        return max(1, self.num_kv_heads // self.cp)
 
 
 class BaseSimulator(ABC):

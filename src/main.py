@@ -12,6 +12,7 @@ Examples:
     python -m src.main cost-model
     python -m src.main cost-model --cp 2 4 8 16 32 --strategies ulysses ring zigzag
 """
+
 import argparse
 import sys
 from pathlib import Path
@@ -81,6 +82,14 @@ def add_imbalance_parser(subparsers) -> None:
         help="Output directory for plots (default: figures/imbalance/<mode>)",
     )
 
+    parser.add_argument(
+        "--ideal-flops",
+        action="store_true",
+        help="Use mathematically useful pairs instead of FlashAttention tile work",
+    )
+    parser.add_argument("--seed", type=int, default=0, help="Sampling seed")
+    parser.add_argument("--no-plot", action="store_true", help="Do not generate plots")
+
 
 def add_cost_model_parser(subparsers) -> None:
     parser = subparsers.add_parser(
@@ -133,6 +142,14 @@ def add_cost_model_parser(subparsers) -> None:
         default="figures/cost_model",
         help="Output directory for plots (default: figures/cost_model)",
     )
+
+    parser.add_argument(
+        "--ideal-flops",
+        action="store_true",
+        help="Use mathematically useful pairs instead of FlashAttention tile work",
+    )
+    parser.add_argument("--seed", type=int, default=0, help="Sampling seed")
+    parser.add_argument("--no-plot", action="store_true", help="Do not generate plots")
 
 
 def parse_args() -> argparse.Namespace:
@@ -198,6 +215,8 @@ def run_imbalance(args) -> int:
         n_steps=args.steps,
         cp_degrees=args.cp,
         distributions=args.distributions,
+        tile_aware=not args.ideal_flops,
+        seed=args.seed,
     )
 
     if not args.quiet:
@@ -210,9 +229,12 @@ def run_imbalance(args) -> int:
         print()
 
     runner = ImbalanceExperimentRunner(config, simulator_type=args.mode)
-    runner.run_and_plot(Path(args.output), verbose=not args.quiet)
+    if args.no_plot:
+        runner.run(verbose=not args.quiet)
+    else:
+        runner.run_and_plot(Path(args.output), verbose=not args.quiet)
 
-    if not args.quiet:
+    if not args.quiet and not args.no_plot:
         print(f"\nPlots saved to {args.output}/")
 
     return 0
@@ -235,6 +257,8 @@ def run_cost_model(args) -> int:
         cp_degrees=args.cp,
         strategies=args.strategies,
         distributions=args.distributions,
+        tile_aware=not args.ideal_flops,
+        seed=args.seed,
     )
 
     if not args.quiet:
@@ -248,9 +272,12 @@ def run_cost_model(args) -> int:
         print()
 
     runner = CostModelRunner(config)
-    runner.run_and_plot(Path(args.output), verbose=not args.quiet)
+    if args.no_plot:
+        runner.run(verbose=not args.quiet)
+    else:
+        runner.run_and_plot(Path(args.output), verbose=not args.quiet)
 
-    if not args.quiet:
+    if not args.quiet and not args.no_plot:
         print(f"\nPlots saved to {args.output}/")
 
     return 0

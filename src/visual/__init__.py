@@ -53,6 +53,7 @@ def plot_flash_cost_violin(
     flash_costs: list[list[float]],
     distribution: str,
     output_path: Path | str,
+    cost_label: str = "Flash cost per GPU",
 ) -> None:
     df = pd.DataFrame(
         [
@@ -67,12 +68,12 @@ def plot_flash_cost_violin(
     sns.violinplot(data=df, x="CP", y="Flash Cost", ax=axes[0], inner="quart", cut=0)
     axes[0].set_title("Flash Cost Distribution by Context Parallel Size")
     axes[0].set_xlabel("Context Parallel Size")
-    axes[0].set_ylabel("Flash Cost per GPU")
+    axes[0].set_ylabel(cost_label)
 
     sns.boxplot(data=df, x="CP", y="Flash Cost", ax=axes[1], width=0.5)
     axes[1].set_title("Flash Cost Spread by Context Parallel Size")
     axes[1].set_xlabel("Context Parallel Size")
-    axes[1].set_ylabel("Flash Cost per GPU")
+    axes[1].set_ylabel(cost_label)
 
     plt.suptitle(f"{distribution.title()} Distribution")
     plt.tight_layout(rect=(0, 0, 1, 0.95))
@@ -87,6 +88,7 @@ def plot_cost_histograms(
     flash_costs: list[list[float]],
     distribution: str,
     output_path: Path | str,
+    cost_label: str = "Flash cost per GPU",
 ) -> None:
     """Plot histograms of flash costs for each CP degree."""
     n_plots = len(cp_degrees)
@@ -113,7 +115,7 @@ def plot_cost_histograms(
             mean(costs), color="crimson", linestyle="--", linewidth=2, label="mean"
         )
         ax.set_title(f"CP={cp}, DP/CP={dp // cp}\nimbalance={imbalances[idx]:.3f}")
-        ax.set_xlabel("Flash cost per GPU")
+        ax.set_xlabel(cost_label)
         ax.set_ylabel("Count")
         ax.legend()
 

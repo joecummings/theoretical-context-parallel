@@ -12,7 +12,7 @@ try:
     import torch
 
     if torch.cuda.is_available():
-        from src.imbalance.real import RealSimulator
+        from src.imbalance.real import RealSimulator  # noqa: F401
 
         __all__.append("RealSimulator")
 except ImportError:

@@ -3,6 +3,7 @@ from typing import cast
 import numpy as np
 
 from src.cost_model.architecture import QWEN235, AttentionConfig
+from src.cost_model.flash import attention_pairs
 from src.cost_model.hardware import H100, HardwareConfig
 from src.cost_model.strategies.base import CPStrategy
 
@@ -21,13 +22,19 @@ class RingAttention(CPStrategy):
     name = "ring"
 
     def __init__(
-        self, cp: int, hw: HardwareConfig = H100, attn: AttentionConfig = QWEN235
+        self,
+        cp: int,
+        hw: HardwareConfig = H100,
+        attn: AttentionConfig = QWEN235,
+        tile_aware: bool = True,
     ):
-        super().__init__(cp, hw, attn)
+        super().__init__(cp, hw, attn, tile_aware)
 
     def total_time(self, batch: list[int]) -> float:
         offsets = np.cumsum([0] + batch)
         total_tokens = offsets[-1]
+        if total_tokens % self.cp != 0:
+            raise ValueError("total tokens must be divisible by CP")
         tokens_per_rank = total_tokens // self.cp
 
         rank_starts = np.arange(self.cp) * tokens_per_rank
@@ -36,11 +43,11 @@ class RingAttention(CPStrategy):
         s_starts = offsets[:-1]
         s_ends = offsets[1:]
 
-        nh = self.attn.num_heads
-        dh = self.attn.head_dim
         nkvh = self.attn.num_kv_heads
 
-        bytes_per_step = tokens_per_rank * nkvh * dh * 2 * 2
+        bytes_per_step = (
+            tokens_per_rank * nkvh * self.attn.head_dim * 2 * self.attn.dtype_bytes
+        )
         comm_time_per_step = bytes_per_step / self.hw.p2p_bandwidth(self.cp)
 
         total_time = 0.0
@@ -74,15 +81,28 @@ class RingAttention(CPStrategy):
 
                 # Diagonal block (same rank): triangular attention
                 # Off-diagonal block: rectangular attention
-                if step == 0:
-                    ops = np.sum(q_lens[active] * (q_lens[active] + 1) / 2)
-                else:
-                    ops = np.sum(q_lens[active] * kv_lens[active])
-
-                compute_time = 4 * nh * dh * ops / self.hw.compute_flops
-                max_compute_at_step = max(max_compute_at_step, compute_time)
+                pairs = sum(
+                    attention_pairs(
+                        int(q_len),
+                        int(kv_len),
+                        causal=step == 0,
+                        tile_aware=self.tile_aware,
+                        block_q=self.attn.flash_block_q,
+                        block_kv=self.attn.flash_block_kv,
+                    )
+                    for q_len, kv_len in zip(q_lens[active], kv_lens[active])
+                )
+                flash_time = self._flash_time(
+                    pairs,
+                    int(np.sum(q_lens[active])),
+                    int(np.sum(kv_lens[active])),
+                    self.attn.num_heads,
+                    self.attn.num_kv_heads,
+                )
+                max_compute_at_step = max(max_compute_at_step, flash_time)
 
             # wait for the slower of compute or communication
-            total_time += max(max_compute_at_step, comm_time_per_step)
+            comm_time = comm_time_per_step if step < self.cp - 1 else 0.0
+            total_time += max(max_compute_at_step, comm_time)
 
         return cast(float, total_time)

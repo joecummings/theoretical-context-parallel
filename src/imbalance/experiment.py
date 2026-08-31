@@ -11,11 +11,6 @@ from src.utils import (
     compute_imbalance_metrics,
     make_sample_fn,
 )
-from src.visual import (
-    plot_cost_histograms,
-    plot_flash_cost_violin,
-    plot_imbalance_vs_cp,
-)
 
 SimulatorType = Literal["theoretical", "real"]
 
@@ -46,6 +41,8 @@ class ExperimentConfig:
     distributions: list[DistributionType] = field(
         default_factory=lambda: ["exponential", "normal"]
     )
+    tile_aware: bool = True
+    seed: int | None = 0
 
 
 class ImbalanceExperimentRunner:
@@ -72,6 +69,7 @@ class ImbalanceExperimentRunner:
             dp=self.config.dp,
             cp=cp,
             n_steps=self.config.n_steps,
+            tile_aware=self.config.tile_aware,
         )
 
         if self.simulator_type == "theoretical":
@@ -89,7 +87,11 @@ class ImbalanceExperimentRunner:
             simulator = self._create_simulator(cp)
 
             for dist in self.config.distributions:
-                sample_fn = make_sample_fn(dist, self.config.max_seq_len)
+                dist_seed = None
+                if self.config.seed is not None:
+                    dist_seed = self.config.seed + self.config.distributions.index(dist)
+                rng = np.random.default_rng(dist_seed)
+                sample_fn = make_sample_fn(dist, self.config.max_seq_len, rng)
                 costs = simulator.run(sample_fn)
                 metrics = compute_imbalance_metrics(costs)
 
@@ -108,6 +110,12 @@ class ImbalanceExperimentRunner:
         self, output_dir: Path | str, verbose: bool = True
     ) -> list[ExperimentResult]:
         """Run experiments and generate all plots."""
+        from src.visual import (
+            plot_cost_histograms,
+            plot_flash_cost_violin,
+            plot_imbalance_vs_cp,
+        )
+
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -120,6 +128,11 @@ class ImbalanceExperimentRunner:
             costs = [r.first_step_costs for r in dist_results]
 
             prefix = dist[:3]
+            cost_label = (
+                "Measured FA3 forward time (ms)"
+                if self.simulator_type == "real"
+                else "Estimated FA3 forward time (s)"
+            )
 
             plot_imbalance_vs_cp(
                 cp_degrees,
@@ -129,7 +142,11 @@ class ImbalanceExperimentRunner:
             )
 
             plot_flash_cost_violin(
-                cp_degrees, costs, dist, output_dir / f"{prefix}_flash_cost_violin.png"
+                cp_degrees,
+                costs,
+                dist,
+                output_dir / f"{prefix}_flash_cost_violin.png",
+                cost_label,
             )
 
             plot_cost_histograms(
@@ -139,6 +156,7 @@ class ImbalanceExperimentRunner:
                 costs,
                 dist,
                 output_dir / f"{prefix}_cost_histograms.png",
+                cost_label,
             )
 
         return results
