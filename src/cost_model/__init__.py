@@ -5,7 +5,7 @@ from src.cost_model.flash import (
     tiled_attention_pairs,
     useful_attention_pairs,
 )
-from src.cost_model.hardware import H100, H200, HardwareConfig
+from src.cost_model.hardware import GB300, H100, H200, HardwareConfig
 from src.cost_model.strategies import (
     STRATEGIES,
     CPStrategy,
@@ -18,6 +18,7 @@ __all__ = [
     "HardwareConfig",
     "H100",
     "H200",
+    "GB300",
     "CPStrategy",
     "UlyssesAttention",
     "RingAttention",

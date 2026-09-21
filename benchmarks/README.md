@@ -26,3 +26,22 @@ The fixed-maximum control used `--fixed-max-seqlen --cp 1 8 64 --dp 64`.
 These are sequential samples of hypothetical DP/CP-group workloads on one
 H100; they do not include concurrent distributed communication or system-level
 straggler noise.
+
+## FA4 on GB300
+
+`bench_fa4_varlen.py` uses `flash_attn.cute.flash_attn_varlen_func` with the
+same BF16, head-dimension-128 workloads. Install FA4, PyTorch, Triton, and NumPy
+in the GPU environment, then run from the repository root:
+
+```bash
+python benchmarks/bench_fa4_varlen.py --dp 128 --warmup 25 --rep 100 \
+  --output benchmarks/results/fa4_gb300_results.json
+python benchmarks/analyze_fa3_results.py benchmarks/results/fa4_gb300_results.json
+```
+
+The analyzer accepts the same JSON schema. Timing uses median eager invocation
+latency after compilation and warmup; `--warmup` and `--rep` are milliseconds.
+`--block-q` and `--block-kv` only set analytical tile counts (default 128 each),
+not FA4 kernel configuration. Verify those assumptions before using a tiled
+fit. Results also include useful/tiled FLOPs and estimated Q/K/V/output bytes
+for a roofline fit. The existing analyzer fits a linear compute-only model.
