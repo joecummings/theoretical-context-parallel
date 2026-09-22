@@ -1,0 +1,74 @@
+{
+  "environment": {
+    "device": "NVIDIA GB300 Max-Q",
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "python": "3.12.3",
+    "triton": "3.6.0",
+    "transformer_engine": "2.11.0+cu130.20260709.torch2110"
+  },
+  "config": {
+    "output": "gated_tp64_cp1.json",
+    "seq_len": 32768,
+    "micro_batch_size": 1,
+    "tp": [
+      64
+    ],
+    "cp": [
+      1
+    ],
+    "warmup": 25,
+    "rep": 100,
+    "rounds": 3,
+    "gated_attention": true,
+    "seed": 0,
+    "hidden_size": 7168,
+    "q_heads": 64,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "dtype": "bfloat16",
+    "backend": "transformer_engine.pytorch.Linear, BF16, no bias"
+  },
+  "results": [
+    {
+      "projection": "qgkv",
+      "tp": 64,
+      "cp": 1,
+      "m": 32768,
+      "k": 7168,
+      "n": 512,
+      "time_ms": 0.16912084023418653,
+      "flops": 240518168576,
+      "io_bytes": 510656512,
+      "throughput_tflops": 1422.1675356091391,
+      "samples_ms": [
+        0.16253565057464267,
+        0.17323553653139817,
+        0.17159133359651874
+      ],
+      "mean_ms": 0.16912084023418653,
+      "std_ms": 0.004704564660120992,
+      "ulysses_supported": true
+    },
+    {
+      "projection": "output",
+      "tp": 64,
+      "cp": 1,
+      "m": 32768,
+      "k": 128,
+      "n": 7168,
+      "time_ms": 0.14615191594079047,
+      "flops": 60129542144,
+      "io_bytes": 479985664,
+      "throughput_tflops": 411.4180902586311,
+      "samples_ms": [
+        0.13702019554126513,
+        0.12794958954923843,
+        0.17348596273186784
+      ],
+      "mean_ms": 0.14615191594079047,
+      "std_ms": 0.019679626669024203,
+      "ulysses_supported": true
+    }
+  ]
+}

@@ -10,8 +10,8 @@ class UlyssesAttention(CPStrategy):
     Ulysses splits attention heads across CP ranks and uses all-to-all
     to exchange Q, K, V before local attention, then all-to-all again for output.
 
-    Without an explicitly modeled chunked pipeline, the dependent communication
-    and attention phases are added.
+    Compose with AttentionBlock to include projections and sequence parallelism.
+    All forward phases are added without communication/compute overlap.
     """
 
     name = "ulysses"
@@ -22,14 +22,16 @@ class UlyssesAttention(CPStrategy):
         hw: HardwareConfig = H100,
         attn: AttentionConfig = QWEN235,
         tile_aware: bool = True,
+        *,
+        tp: int = 1,
     ):
-        super().__init__(cp, hw, attn, tile_aware)
-        self.attn.local_heads(cp)  # validate head sharding
+        super().__init__(cp, hw, attn, tile_aware, tp=tp)
+        self.local_q_heads, self.local_kv_heads = self.attn.local_heads(tp * cp)
 
-    def _compute_time(self, batch: list[int]) -> float:
-        """Local attention compute time (heads split across CP)."""
+    def _attn_compute_time(self, batch: list[int]) -> float:
+        """Local attention compute time (heads split across TP and CP)."""
         seqlen = sum(batch)
-        local_q_heads, local_kv_heads = self.attn.local_heads(self.cp)
+        local_q_heads, local_kv_heads = self.local_q_heads, self.local_kv_heads
         pairs = batch_attention_pairs(
             batch,
             causal=self.attn.causal,
@@ -39,25 +41,37 @@ class UlyssesAttention(CPStrategy):
         )
         return self._flash_time(pairs, seqlen, seqlen, local_q_heads, local_kv_heads)
 
-    def _comm_time(self, total_seq_len: int) -> float:
-        """AllToAlls communication for Q, K, V, and O."""
+    def _attn_comm_time(self, total_seq_len: int) -> float:
+        """QKV all-to-all before attention."""
+        return self._attn_all_to_all_time(
+            total_seq_len, self.local_q_heads + 2 * self.local_kv_heads
+        )
+
+    def _attn_output_comm_time(self, total_seq_len: int) -> float:
+        """Output all-to-all after attention."""
+        return self._attn_all_to_all_time(total_seq_len, self.local_q_heads)
+
+    def _attn_all_to_all_time(self, total_seq_len: int, heads: int) -> float:
         if self.cp == 1:
             return 0.0
-        local_q_heads, local_kv_heads = self.attn.local_heads(self.cp)
-        dh = self.attn.head_dim
-
-        # Per-rank QKVO payload. KV heads are replicated when CP exceeds the
-        # global KV-head count; treating Hkv / CP as fractional heads is invalid.
+        # Local head counts include replicated KV heads.
         bytes_transferred = (
-            total_seq_len
-            * dh
-            * (2 * local_q_heads + 2 * local_kv_heads)
-            * self.attn.dtype_bytes
+            total_seq_len * self.attn.head_dim * heads * self.attn.dtype_bytes
         )
-        return bytes_transferred / self.hw.p2p_bandwidth(self.cp)
+        # TP ranks are contiguous; a CP group spans the TP x CP placement.
+        return bytes_transferred / self.hw.p2p_bandwidth(self.cp * self.tp)
+
+    def _compute_time(self, batch: list[int]) -> float:
+        return self._attn_compute_time(batch)
+
+    def _comm_time(self, total_seq_len: int) -> float:
+        return (
+            self._attn_comm_time(total_seq_len)
+            + self._attn_output_comm_time(total_seq_len)
+        )
 
     def total_time(self, batch: list[int]) -> float:
-        """QKV all-to-all, attention, and output all-to-all are dependent."""
+        self._validate_batch(batch)
         compute = self._compute_time(batch)
         comm = self._comm_time(sum(batch))
         return compute + comm
