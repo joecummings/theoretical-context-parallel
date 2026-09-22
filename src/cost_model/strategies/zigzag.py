@@ -26,8 +26,10 @@ class ZigZagAttention(CPStrategy):
         hw: HardwareConfig = H100,
         attn: AttentionConfig = QWEN235,
         tile_aware: bool = True,
+        *,
+        tp: int = 1,
     ):
-        super().__init__(cp, hw, attn, tile_aware)
+        super().__init__(cp, hw, attn, tile_aware, tp=tp)
 
     def _get_rank_chunks(self, rank: int, block_size: int) -> list[tuple[int, int]]:
         """Get the two token ranges assigned to a rank."""
@@ -38,6 +40,7 @@ class ZigZagAttention(CPStrategy):
         return [(start1, end1), (start2, end2)]
 
     def total_time(self, batch: list[int]) -> float:
+        self._validate_batch(batch)
         offsets = np.cumsum([0] + batch)
         total_tokens = offsets[-1]
         if total_tokens % (2 * self.cp) != 0:
@@ -47,13 +50,13 @@ class ZigZagAttention(CPStrategy):
         s_starts = offsets[:-1]
         s_ends = offsets[1:]
 
-        nkvh = self.attn.num_kv_heads
+        nkvh = self.tp_kv_heads
 
         # assumes bf16
         bytes_per_step = (
             2 * block_size * nkvh * self.attn.head_dim * 2 * self.attn.dtype_bytes
         )
-        comm_time_per_step = bytes_per_step / self.hw.p2p_bandwidth(self.cp)
+        comm_time_per_step = bytes_per_step / self.hw.p2p_bandwidth(self.cp * self.tp)
 
         total_time = 0.0
 
@@ -109,8 +112,8 @@ class ZigZagAttention(CPStrategy):
                     rank_ops,
                     rank_q_tokens,
                     rank_kv_tokens,
-                    self.attn.num_heads,
-                    self.attn.num_kv_heads,
+                    self.tp_q_heads,
+                    self.tp_kv_heads,
                 )
                 max_compute_at_step = max(max_compute_at_step, flash_time)
 

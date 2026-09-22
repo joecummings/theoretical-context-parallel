@@ -5,6 +5,7 @@ from src.cost_model.flash import (
     tiled_attention_pairs,
     useful_attention_pairs,
 )
+from src.cost_model.gemm import MeasuredGemmTimings
 from src.cost_model.hardware import GB300, H100, H200, HardwareConfig
 from src.cost_model.strategies import (
     STRATEGIES,
@@ -14,7 +15,11 @@ from src.cost_model.strategies import (
     ZigZagAttention,
 )
 
+from src.cost_model.block import AttentionBlock
+
 __all__ = [
+    "AttentionBlock",
+    "MeasuredGemmTimings",
     "HardwareConfig",
     "H100",
     "H200",

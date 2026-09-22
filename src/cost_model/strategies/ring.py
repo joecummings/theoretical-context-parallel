@@ -27,10 +27,13 @@ class RingAttention(CPStrategy):
         hw: HardwareConfig = H100,
         attn: AttentionConfig = QWEN235,
         tile_aware: bool = True,
+        *,
+        tp: int = 1,
     ):
-        super().__init__(cp, hw, attn, tile_aware)
+        super().__init__(cp, hw, attn, tile_aware, tp=tp)
 
     def total_time(self, batch: list[int]) -> float:
+        self._validate_batch(batch)
         offsets = np.cumsum([0] + batch)
         total_tokens = offsets[-1]
         if total_tokens % self.cp != 0:
@@ -43,12 +46,12 @@ class RingAttention(CPStrategy):
         s_starts = offsets[:-1]
         s_ends = offsets[1:]
 
-        nkvh = self.attn.num_kv_heads
+        nkvh = self.tp_kv_heads
 
         bytes_per_step = (
             tokens_per_rank * nkvh * self.attn.head_dim * 2 * self.attn.dtype_bytes
         )
-        comm_time_per_step = bytes_per_step / self.hw.p2p_bandwidth(self.cp)
+        comm_time_per_step = bytes_per_step / self.hw.p2p_bandwidth(self.cp * self.tp)
 
         total_time = 0.0
 
@@ -96,8 +99,8 @@ class RingAttention(CPStrategy):
                     pairs,
                     int(np.sum(q_lens[active])),
                     int(np.sum(kv_lens[active])),
-                    self.attn.num_heads,
-                    self.attn.num_kv_heads,
+                    self.tp_q_heads,
+                    self.tp_kv_heads,
                 )
                 max_compute_at_step = max(max_compute_at_step, flash_time)
 

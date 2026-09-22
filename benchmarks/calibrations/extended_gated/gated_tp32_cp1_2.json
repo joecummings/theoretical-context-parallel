@@ -1,0 +1,115 @@
+{
+  "environment": {
+    "device": "NVIDIA GB300 Max-Q",
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "python": "3.12.3",
+    "triton": "3.6.0",
+    "transformer_engine": "2.11.0+cu130.20260709.torch2110"
+  },
+  "config": {
+    "output": "gated_tp32_cp1_2.json",
+    "seq_len": 32768,
+    "micro_batch_size": 1,
+    "tp": [
+      32
+    ],
+    "cp": [
+      1,
+      2
+    ],
+    "warmup": 25,
+    "rep": 100,
+    "rounds": 3,
+    "gated_attention": true,
+    "seed": 0,
+    "hidden_size": 7168,
+    "q_heads": 64,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "dtype": "bfloat16",
+    "backend": "transformer_engine.pytorch.Linear, BF16, no bias"
+  },
+  "results": [
+    {
+      "projection": "qgkv",
+      "tp": 32,
+      "cp": 1,
+      "m": 32768,
+      "k": 7168,
+      "n": 768,
+      "time_ms": 0.23518220434070136,
+      "flops": 360777252864,
+      "io_bytes": 531103744,
+      "throughput_tflops": 1534.0329591492086,
+      "samples_ms": [
+        0.21047333317498365,
+        0.2519977796047083,
+        0.2430755002424121
+      ],
+      "mean_ms": 0.23518220434070136,
+      "std_ms": 0.01784746486138841,
+      "ulysses_supported": true
+    },
+    {
+      "projection": "output",
+      "tp": 32,
+      "cp": 1,
+      "m": 32768,
+      "k": 256,
+      "n": 7168,
+      "time_ms": 0.10896957230201239,
+      "flops": 120259084288,
+      "io_bytes": 490209280,
+      "throughput_tflops": 1103.6024254064098,
+      "samples_ms": [
+        0.10890903397810989,
+        0.10867745273859258,
+        0.1093222301893347
+      ],
+      "mean_ms": 0.10896957230201239,
+      "std_ms": 0.00026668727846432976,
+      "ulysses_supported": true
+    },
+    {
+      "projection": "qgkv",
+      "tp": 32,
+      "cp": 2,
+      "m": 16384,
+      "k": 7168,
+      "n": 768,
+      "time_ms": 0.12482735359305887,
+      "flops": 180388626432,
+      "io_bytes": 271056896,
+      "throughput_tflops": 1445.1049488726055,
+      "samples_ms": [
+        0.13606338537124232,
+        0.12006779871008867,
+        0.11835087669784562
+      ],
+      "mean_ms": 0.12482735359305887,
+      "std_ms": 0.007975933086032106,
+      "ulysses_supported": true
+    },
+    {
+      "projection": "output",
+      "tp": 32,
+      "cp": 2,
+      "m": 16384,
+      "k": 256,
+      "n": 7168,
+      "time_ms": 0.10239527004996511,
+      "flops": 60129542144,
+      "io_bytes": 246939648,
+      "throughput_tflops": 587.2296846783938,
+      "samples_ms": [
+        0.10420278492855133,
+        0.10146876792435039,
+        0.10151425729699359
+      ],
+      "mean_ms": 0.10239527004996511,
+      "std_ms": 0.0012782409392048106,
+      "ulysses_supported": true
+    }
+  ]
+}
